@@ -1,5 +1,8 @@
 import os
+import asyncio
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -21,12 +24,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+PORT = int(os.getenv("PORT", "8070"))
+
+# Simple HTTP Health Check Handler for Kubernetix
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK - 24/7 Bot is healthy")
+
+    def log_message(self, format, *args):
+        # Silence access logs to keep log output clean
+        return
+
+def start_health_server():
+    server = HTTPServer(("0.0.0.0", PORT), HealthCheckHandler)
+    logger.info(f"Health check HTTP server listening on port {PORT}")
+    server.serve_forever()
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name or "there"
     welcome_text = (
         f"Hello {user_name}! 👋\n\n"
-        "I am your AI Chatbot running 24/7 on Koyeb!\n\n"
+        "I am your AI Chatbot running 24/7 on Kubernetix!\n\n"
         "Commands:\n"
         "/start - Welcome message\n"
         "/help - Available commands\n"
@@ -45,7 +66,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏓 Pong! Bot is active 24/7.")
+    await update.message.reply_text("🏓 Pong! Bot is active 24/7 on Kubernetix.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
@@ -55,6 +76,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not TOKEN:
         raise ValueError("Error: TELEGRAM_BOT_TOKEN environment variable not set!")
+
+    # Start health check server on port 8070 in background thread
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
 
     logger.info("Initializing Telegram bot application...")
     app = ApplicationBuilder().token(TOKEN).build()
